@@ -2,32 +2,33 @@ package main
 
 import (
 	"fmt"
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"image/color"
 	"log"
 	"math/rand"
 	"time"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 const (
 	WIDTH  = 400
-	HEIGHT = 300
-	CELL   = 3
+	HEIGHT = 250
+	CELL   = 4
 )
 
 type CellType int
 type Status int
 
 const (
-	EMPTY       CellType = iota
-	SAND_TYPE_0          // Текучесть 0 - очень грубый песок
-	SAND_TYPE_1          // Текучесть 1 - грубый песок
-	SAND_TYPE_2          // Текучесть 2 - обычный песок
-	SAND_TYPE_3          // Текучесть 3 - мелкий песок
-	SAND_TYPE_4          // Текучесть 4 - очень мелкий песок
-	SAND_TYPE_5          // Текучесть 5 - пудровый песок
-	STONE
+	Empty     CellType = iota
+	SandType0          // Текучесть 0 - очень грубый песок
+	SandType1          // Текучесть 1 - грубый песок
+	SandType2          // Текучесть 2 - обычный песок
+	SandType3          // Текучесть 3 - мелкий песок
+	SandType4          // Текучесть 4 - очень мелкий песок
+	SandType5          // Текучесть 5 - пудровый песок
+	Stone
 )
 
 const (
@@ -67,12 +68,12 @@ var sandConfig = map[CellType]struct {
 	fallDelay  int // Задержка перед следующим падением (в кадрах)
 	color      color.RGBA
 }{
-	SAND_TYPE_0: {1, 0.8, 0, color.RGBA{139, 115, 85, 255}}, // Темные падают быстрее (без задержки)
-	SAND_TYPE_1: {2, 0.9, 1, color.RGBA{160, 130, 98, 255}},
-	SAND_TYPE_2: {2, 0.95, 1, color.RGBA{194, 154, 108, 255}},
-	SAND_TYPE_3: {3, 0.98, 2, color.RGBA{218, 165, 32, 255}},
-	SAND_TYPE_4: {4, 1.0, 3, color.RGBA{238, 203, 173, 255}},
-	SAND_TYPE_5: {5, 1.0, 4, color.RGBA{255, 228, 196, 255}}, // Самые светлые падают медленнее
+	SandType0: {1, 0.85, 0, color.RGBA{159, 145, 105, 255}}, // Темные падают быстрее (без задержки)
+	SandType1: {1, 0.90, 1, color.RGBA{180, 160, 118, 255}},
+	SandType2: {2, 0.95, 0, color.RGBA{214, 174, 128, 255}},
+	SandType3: {2, 0.98, 1, color.RGBA{228, 185, 92, 255}},
+	SandType4: {3, 1.0, 0, color.RGBA{248, 213, 183, 255}},
+	SandType5: {4, 1.0, 1, color.RGBA{255, 228, 196, 255}}, // Самые светлые падают медленнее
 }
 
 func main() {
@@ -96,7 +97,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	for x := 0; x < WIDTH; x++ {
 		for y := 0; y < HEIGHT; y++ {
 			switch grid[x][y].Type {
-			case SAND_TYPE_0, SAND_TYPE_1, SAND_TYPE_2, SAND_TYPE_3, SAND_TYPE_4, SAND_TYPE_5:
+			case SandType0, SandType1, SandType2, SandType3, SandType4, SandType5:
 				if config, exists := sandConfig[grid[x][y].Type]; exists {
 					clr := config.color
 					// Немного затемняем settled частицы для визуализации
@@ -107,7 +108,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 					}
 					ebitenutil.DrawRect(screen, float64(x*CELL), float64(y*CELL), CELL, CELL, clr)
 				}
-			case STONE:
+			case Stone:
 				ebitenutil.DrawRect(screen, float64(x*CELL), float64(y*CELL), CELL, CELL, color.RGBA{128, 128, 128, 255})
 			}
 		}
@@ -129,8 +130,8 @@ func initGrid() {
 
 	// Создаем каменные границы
 	for x := 0; x < WIDTH; x++ {
-		grid[x][100] = Cell{Type: STONE, Status: Fixed}      // Верхняя граница
-		grid[x][HEIGHT-1] = Cell{Type: STONE, Status: Fixed} // Нижняя граница
+		grid[x][100] = Cell{Type: Stone, Status: Fixed}      // Верхняя граница
+		grid[x][HEIGHT-1] = Cell{Type: Stone, Status: Fixed} // Нижняя граница
 	}
 
 	// Создаем случайное количество наклонных границ (2-4)
@@ -142,7 +143,11 @@ func initGrid() {
 		length := slopeSpacing - 10 + rand.Intn(20)
 
 		// Определяем параметры наклона
-		baseY := 160 + rand.Intn(60)    // Базовый уровень (60-90)
+		baseY := 160 + rand.Intn(60) // Базовый уровень (60-90)
+		if baseY >= HEIGHT {
+			baseY = HEIGHT - 1
+		}
+
 		angle := 0.0 + rand.Float64()*1 // Угол наклона (0.2-0.8)
 		if rand.Intn(2) == 0 {
 			angle = -angle // Случайное направление наклона
@@ -156,14 +161,17 @@ func initGrid() {
 			}
 
 			y := baseY + int(float64(dx)*angle)
+			if y >= HEIGHT {
+				continue
+			}
 
-			grid[x][y] = Cell{Type: STONE, Status: Fixed}
+			grid[x][y] = Cell{Type: Stone, Status: Fixed}
 
 			// Создаем двойные отверстия с вероятностью 15%
 			if rand.Float32() < 0.15 && dx > 10 && dx < length-10 {
 				holeY := 100
-				grid[x][holeY] = Cell{Type: EMPTY, Status: Idle}
-				grid[x+1][holeY] = Cell{Type: EMPTY, Status: Idle}
+				grid[x][holeY] = Cell{Type: Empty, Status: Idle}
+				grid[x+1][holeY] = Cell{Type: Empty, Status: Idle}
 			}
 		}
 	}
@@ -171,8 +179,8 @@ func initGrid() {
 	// Заполняем верхнюю часть песком
 	for y := 0; y < 100; y++ {
 		for x := 0; x < WIDTH; x++ {
-			if grid[x][y].Type == EMPTY && rand.Float32() < 0.7 {
-				sandTypes := []CellType{SAND_TYPE_0, SAND_TYPE_1, SAND_TYPE_2, SAND_TYPE_3, SAND_TYPE_4, SAND_TYPE_5}
+			if grid[x][y].Type == Empty && rand.Float32() < 0.7 {
+				sandTypes := []CellType{SandType0, SandType1, SandType2, SandType3, SandType4, SandType5}
 				sandType := sandTypes[rand.Intn(len(sandTypes))]
 				config := sandConfig[sandType]
 
@@ -262,7 +270,7 @@ func handleIdle(x, y int, activeSet map[Pos]struct{}) {
 
 func shouldActivate(x, y int) bool {
 	// Проверяем падение
-	if y+1 < HEIGHT && grid[x][y+1].Type == EMPTY {
+	if y+1 < HEIGHT && grid[x][y+1].Type == Empty {
 		return true
 	}
 
@@ -277,7 +285,7 @@ func shouldActivate(x, y int) bool {
 
 func hasEnvironmentChanged(x, y int) bool {
 	// Проверяем, изменилось ли что-то в окружении
-	if y+1 < HEIGHT && grid[x][y+1].Type == EMPTY {
+	if y+1 < HEIGHT && grid[x][y+1].Type == Empty {
 		return true
 	}
 
@@ -306,19 +314,34 @@ func handleFalling(x, y int, activeSet map[Pos]struct{}) {
 		grid[x][y].RollCount = 0
 		grid[x][y].LastRollDir = 0
 		grid[x][y].StableFrames = 0
+		grid[x][y].FallCounter = 0
 		return
 	}
 
-	if grid[x][y+1].Type == EMPTY {
+	config := sandConfig[grid[x][y].Type]
+
+	// Увеличиваем счетчик и проверяем, можно ли падать
+	grid[x][y].FallCounter++
+	if grid[x][y].FallCounter <= config.fallDelay {
+		// Еще не время падать - оставляем частицу активной для следующей проверки
+		addActive(x, y, activeSet)
+		return
+	}
+
+	// Сбрасываем счетчик, если падаем
+	grid[x][y].FallCounter = 0
+
+	if grid[x][y+1].Type == Empty {
 		// Перемещаем частицу вниз
 		cellType := grid[x][y].Type
 		fluidity := grid[x][y].Fluidity
 
-		grid[x][y] = Cell{Type: EMPTY, Status: Idle}
+		grid[x][y] = Cell{Type: Empty, Status: Idle}
 		grid[x][y+1] = Cell{
-			Type:     cellType,
-			Status:   Falling,
-			Fluidity: fluidity,
+			Type:        cellType,
+			Status:      Falling,
+			Fluidity:    fluidity,
+			FallCounter: 0,
 		}
 
 		addActive(x, y+1, activeSet)
@@ -402,7 +425,7 @@ func handleRolling(x, y int, activeSet map[Pos]struct{}) {
 		cellType := grid[x][y].Type
 		cellFluidity := grid[x][y].Fluidity
 
-		grid[x][y] = Cell{Type: EMPTY, Status: Idle}
+		grid[x][y] = Cell{Type: Empty, Status: Idle}
 		grid[nx][y] = Cell{
 			Type:        cellType,
 			Status:      Falling,
@@ -429,7 +452,7 @@ func canRoll(x, y int) bool {
 	}
 
 	// Должно быть препятствие снизу
-	if y+1 >= HEIGHT || grid[x][y+1].Type == EMPTY {
+	if y+1 >= HEIGHT || grid[x][y+1].Type == Empty {
 		return false
 	}
 
@@ -452,7 +475,7 @@ func canRoll(x, y int) bool {
 
 func canRollToPosition(fromX, fromY, toX int) bool {
 	// Целевая позиция должна быть свободна
-	if grid[toX][fromY].Type != EMPTY {
+	if grid[toX][fromY].Type != Empty {
 		return false
 	}
 
@@ -472,8 +495,8 @@ func canRollToPosition(fromX, fromY, toX int) bool {
 			checkX := toX + direction*checkDist
 			if checkX >= 0 && checkX < WIDTH {
 				// Если есть пустое место или возможность упасть
-				if grid[checkX][fromY].Type == EMPTY {
-					if fromY+1 >= HEIGHT || grid[checkX][fromY+1].Type != EMPTY {
+				if grid[checkX][fromY].Type == Empty {
+					if fromY+1 >= HEIGHT || grid[checkX][fromY+1].Type != Empty {
 						foundSpace = true
 					}
 				}
@@ -503,7 +526,7 @@ func updateCellStatus(x, y int, activeSet map[Pos]struct{}) {
 		return
 	}
 
-	if y+1 < HEIGHT && grid[x][y+1].Type == EMPTY {
+	if y+1 < HEIGHT && grid[x][y+1].Type == Empty {
 		grid[x][y].Status = Falling
 		grid[x][y].StableFrames = 0
 		addActive(x, y, activeSet)
@@ -546,7 +569,7 @@ func reactivateNeighbors(x, y int, activeSet map[Pos]struct{}) {
 
 // Вспомогательные функции
 func isSandType(cellType CellType) bool {
-	return cellType >= SAND_TYPE_0 && cellType <= SAND_TYPE_5
+	return cellType >= SandType0 && cellType <= SandType5
 }
 
 func sign(x int) int {
