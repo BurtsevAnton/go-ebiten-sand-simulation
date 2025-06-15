@@ -57,7 +57,7 @@ type Pos struct {
 
 var (
 	grid      [WIDTH][HEIGHT]Cell
-	active    map[Pos]struct{}
+	active    []Pos
 	iteration = 0
 )
 
@@ -187,11 +187,11 @@ func initGrid() {
 		}
 	}
 
-	active = make(map[Pos]struct{})
+	active = make([]Pos, 0, WIDTH*HEIGHT)
 	for y := HEIGHT - 2; y >= 0; y-- {
 		for x := 0; x < WIDTH; x++ {
 			if isSandType(grid[x][y].Type) {
-				updateCellStatus(x, y, active)
+				updateCellStatus(x, y)
 			}
 		}
 	}
@@ -199,9 +199,9 @@ func initGrid() {
 
 func update() error {
 	iteration++
-	newActive := make(map[Pos]struct{})
+	newActive := make([]Pos, 0, len(active)*2)
 
-	for pos := range active {
+	for _, pos := range active {
 		x, y := pos.X, pos.Y
 
 		if !isSandType(grid[x][y].Type) {
@@ -210,13 +210,13 @@ func update() error {
 
 		switch grid[x][y].Status {
 		case Falling:
-			handleFalling(x, y, newActive)
+			handleFalling(x, y, &newActive)
 		case Rolling:
-			handleRolling(x, y, newActive)
+			handleRolling(x, y, &newActive)
 		case PendingRoll:
-			handlePendingRoll(x, y, newActive)
+			handlePendingRoll(x, y, &newActive)
 		case Idle:
-			handleIdle(x, y, newActive)
+			handleIdle(x, y, &newActive)
 		}
 	}
 
@@ -227,7 +227,8 @@ func update() error {
 					if hasEnvironmentChanged(x, y) {
 						grid[x][y].Status = Idle
 						grid[x][y].StableFrames = 0
-						updateCellStatus(x, y, newActive)
+						updateCellStatus(x, y)
+						addActive(x, y, &newActive)
 					}
 				}
 			}
@@ -239,7 +240,7 @@ func update() error {
 	return nil
 }
 
-func handleIdle(x, y int, activeSet map[Pos]struct{}) {
+func handleIdle(x, y int, activeSet *[]Pos) {
 	grid[x][y].StableFrames++
 
 	if grid[x][y].StableFrames > 60 {
@@ -254,7 +255,8 @@ func handleIdle(x, y int, activeSet map[Pos]struct{}) {
 
 	if shouldActivate(x, y) {
 		grid[x][y].StableFrames = 0
-		updateCellStatus(x, y, activeSet)
+		updateCellStatus(x, y)
+		addActive(x, y, activeSet)
 	}
 }
 
@@ -293,7 +295,7 @@ func hasEnvironmentChanged(x, y int) bool {
 	return false
 }
 
-func handleFalling(x, y int, activeSet map[Pos]struct{}) {
+func handleFalling(x, y int, activeSet *[]Pos) {
 	if y+1 >= HEIGHT {
 		grid[x][y].Status = Idle
 		grid[x][y].RollCount = 0
@@ -345,7 +347,7 @@ func handleFalling(x, y int, activeSet map[Pos]struct{}) {
 	}
 }
 
-func handlePendingRoll(x, y int, activeSet map[Pos]struct{}) {
+func handlePendingRoll(x, y int, activeSet *[]Pos) {
 	if canRoll(x, y) {
 		grid[x][y].Status = Rolling
 		grid[x][y].StableFrames = 0
@@ -357,7 +359,7 @@ func handlePendingRoll(x, y int, activeSet map[Pos]struct{}) {
 	}
 }
 
-func handleRolling(x, y int, activeSet map[Pos]struct{}) {
+func handleRolling(x, y int, activeSet *[]Pos) {
 	fluidity := grid[x][y].Fluidity
 	rollCount := grid[x][y].RollCount
 	lastRollDir := grid[x][y].LastRollDir
@@ -475,7 +477,7 @@ func canRollToPosition(fromX, fromY, toX int) bool {
 	return true
 }
 
-func updateCellStatus(x, y int, activeSet map[Pos]struct{}) {
+func updateCellStatus(x, y int) {
 	if !isSandType(grid[x][y].Type) {
 		return
 	}
@@ -492,7 +494,7 @@ func updateCellStatus(x, y int, activeSet map[Pos]struct{}) {
 	if y+1 < HEIGHT && grid[x][y+1].Type == Empty {
 		grid[x][y].Status = Falling
 		grid[x][y].StableFrames = 0
-		addActive(x, y, activeSet)
+		addActive(x, y, &active)
 
 		return
 	}
@@ -500,22 +502,22 @@ func updateCellStatus(x, y int, activeSet map[Pos]struct{}) {
 	if canRoll(x, y) {
 		grid[x][y].Status = Rolling
 		grid[x][y].StableFrames = 0
-		addActive(x, y, activeSet)
+		addActive(x, y, &active)
 
 		return
 	}
 
 	grid[x][y].Status = Idle
-	addActive(x, y, activeSet)
+	addActive(x, y, &active)
 }
 
-func addActive(x, y int, activeSet map[Pos]struct{}) {
+func addActive(x, y int, activeSet *[]Pos) {
 	if x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT {
-		activeSet[Pos{x, y}] = struct{}{}
+		*activeSet = append(*activeSet, Pos{x, y})
 	}
 }
 
-func reactivateNeighbors(x, y int, activeSet map[Pos]struct{}) {
+func reactivateNeighbors(x, y int, activeSet *[]Pos) {
 	directions := []Pos{
 		{0, -1}, {-1, -1}, {1, -1},
 		{-1, 0}, {1, 0},
@@ -526,7 +528,8 @@ func reactivateNeighbors(x, y int, activeSet map[Pos]struct{}) {
 		if nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT {
 			if isSandType(grid[nx][ny].Type) &&
 				(grid[nx][ny].Status == Idle || grid[nx][ny].Status == Settled) {
-				updateCellStatus(nx, ny, activeSet)
+				updateCellStatus(nx, ny)
+				addActive(nx, ny, activeSet)
 			}
 		}
 	}
